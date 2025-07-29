@@ -1,7 +1,7 @@
 # 서버
 
 # 라이브러리 불러오기
-from flask import Flask, request, jsonify # request: 데이터 접근 jsonify: Python 데이터를 JSON으로 응답하게 해줌
+from flask import Flask, request, jsonify, render_template # request: 데이터 접근 jsonify: Python 데이터를 JSON으로 응답하게 해줌
 from datetime import datetime # 시간 관련 기능
 import pymysql # DB 접속 정보 설정 
 import logging # 콘솔 로깅 라이브러리
@@ -23,16 +23,23 @@ def get_db_connection():
         cursorclass=pymysql.cursors.DictCursor
     )
 
+# EC2 서버 설정
 app = Flask(__name__) # 서버 객체 생성
 
-from flask import Flask
-
-app = Flask(__name__)
-
-# 루트 경로
-@app.route('/') 
+# Case 1: 루트 경로가 정의되어 있고, HTML을 반환하는 경우
+@app.route('/')
 def index():
-    return "Hello, Flask App is running on EC2!" 
+    return "<h1>Welcome to My Flask App!</h1>" # 또는 render_template('index.html')
+
+# Case 2: 다른 경로만 정의되어 있는 경우
+@app.route('/hello')
+def hello_world():
+    return "Hello, World!"
+
+# Case 3: 변수 경로가 있는 경우
+@app.route('/user/<username>')
+def show_user_profile(username):
+    return f'User {username}'
 
 # 데이터 수집/업로드 API
 @app.route("/upload", methods=["POST"])
