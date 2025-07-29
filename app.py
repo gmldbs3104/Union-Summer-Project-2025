@@ -16,8 +16,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 def get_db_connection():
     return pymysql.connect(
         host='localhost',
-        user='root',                   # MySQL 사용자명
-        password='Juheeyun3104@',     # MySQL 비밀번호
+        user='union2025',                   # MySQL 사용자명
+        password='Union2025@',     # MySQL 비밀번호
         database='wifi_diagnosis_system',
         charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor
