@@ -199,6 +199,6 @@ def predict():
             conn.close()
 
 # 서버 실행(테스트 서버용)
-if __name__ == "__main__":
+# if __name__ == "__main__":
     # 개발 환경에서는 디버그 모드 활성화 가능 (운영 환경에서는 비활성화)
-    app.run(host="0.0.0.0", port=5000, debug=True) 
+#    app.run(host="0.0.0.0", port=5000, debug=True) 
