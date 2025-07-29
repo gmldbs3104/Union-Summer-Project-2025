@@ -25,6 +25,15 @@ def get_db_connection():
 
 app = Flask(__name__) # 서버 객체 생성
 
+from flask import Flask
+
+app = Flask(__name__)
+
+# 루트 경로
+@app.route('/') 
+def index():
+    return "Hello, Flask App is running on EC2!" 
+
 # 데이터 수집/업로드 API
 @app.route("/upload", methods=["POST"])
 def upload():
