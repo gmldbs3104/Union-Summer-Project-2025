@@ -5,12 +5,75 @@ from flask import Flask, request, jsonify, render_template # request: 데이터 
 from datetime import datetime # 시간 관련 기능
 import pymysql # DB 접속 정보 설정 
 import logging # 콘솔 로깅 라이브러리
+import requests # HTTP 요청 보내기
 
 # 머신러닝 모듈 임포트
 from ml_model_interface import predict_wifi_quality
 
+# Slack 알림
+# config.py 파일에서 SLACK_WEBHOOK_URL 불러오기
+try:
+    from config import SLACK_WEBHOOK_URL
+except ImportError:
+    SLACK_WEBHOOK_URL = None
+    logging.warning("Slack Webhook URL이 설정되지 않았습니다. Slack 알림 기능이 작동하지 않습니다.")
+
 # 로깅 설정 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Slack 알림 전송 함수
+def send_slack_notification(sensor_id, location, problem_reason, occurred_at, level="ERROR"):
+    if not SLACK_WEBHOOK_URL:
+        logging.error("Slack Webhook URL이 설정되지 않아 알림을 보낼 수 없습니다.")
+        return
+
+    # Slack 메시지 본문 구성
+    message_text = f"**[WiFi 진단 시스템 알림 - {level}]**\n" \
+                   f"• 센서 ID: `{sensor_id}`\n" \
+                   f"• 센서 위치: `{location}`\n" \
+                   f"• 장애 원인: `{problem_reason}`\n" \
+                   f"• 발생 시각: `{occurred_at}`"
+
+    # Slack 메시지 페이로드 (JSON 형식)
+    slack_payload = {
+        "text": message_text,
+        "attachments": [
+            {
+                "color": "#ff0000" if level == "ERROR" else "#ffbf00", # 빨강 (ERROR), 주황 (WARNING)
+                "fields": [
+                    {
+                        "title": "센서 ID",
+                        "value": str(sensor_id),
+                        "short": True
+                    },
+                    {
+                        "title": "센서 위치",
+                        "value": location,
+                        "short": True
+                    },
+                    {
+                        "title": "장애 원인",
+                        "value": problem_reason,
+                        "short": False # 긴 메시지를 위해 false
+                    },
+                    {
+                        "title": "발생 시각",
+                        "value": occurred_at,
+                        "short": True
+                    }
+                ],
+                "footer": "WiFi Diagnosis System"
+            }
+        ]
+    }
+
+    try:
+        response = requests.post(SLACK_WEBHOOK_URL, json=slack_payload)
+        response.raise_for_status() # HTTP 오류가 발생하면 예외 발생
+        logging.info(f"Slack 알림 전송 성공 (Level: {level}, Sensor ID: {sensor_id})")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Slack 알림 전송 실패: {e}")
+        logging.error(f"Slack Payload: {slack_payload}") # 어떤 페이로드를 보냈는지 확인용
 
 # 데이터 베이스 연결
 def get_db_connection():
@@ -23,7 +86,7 @@ def get_db_connection():
         cursorclass=pymysql.cursors.DictCursor
     )
 
-# EC2 서버 설정
+# EC2 서버
 app = Flask(__name__) # 서버 객체 생성
 
 # Case 1: 루트 경로가 정의되어 있고, HTML을 반환하는 경우
