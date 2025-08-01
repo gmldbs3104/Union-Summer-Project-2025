@@ -379,7 +379,7 @@ def predict():
         if conn:
             conn.close()
 
-# --- 속도 감소율 계산 및 업데이트 API ---
+# --- 속도 감소율 계산 및 업데이트 API (수정된 코드) ---
 @app.route("/calculate_speed_drop_rates", methods=["POST"])
 def calculate_speed_drop_rates():
     conn = None
@@ -387,24 +387,46 @@ def calculate_speed_drop_rates():
         conn = get_db_connection()
         logging.info("데이터베이스 연결 성공.")
 
-        # 1. 데이터 불러오기
+        # 1. 속도 감소율 계산이 필요한 데이터만 가져오기
+        # `speed_drop_rate`가 NULL인 레코드와 그 직전 레코드를 가져오는 복합 쿼리를 사용
         df = pd.read_sql("""
-            SELECT reading_id, sensor_id, timestamp, speed
-            FROM f_sensor_readings
-            ORDER BY sensor_id ASC, timestamp ASC
+            WITH latest_readings AS (
+                SELECT
+                    reading_id,
+                    sensor_id,
+                    timestamp,
+                    speed,
+                    ROW_NUMBER() OVER(PARTITION BY sensor_id ORDER BY timestamp DESC) as rn
+                FROM f_sensor_readings
+                WHERE speed_drop_rate IS NULL
+            ),
+            previous_readings AS (
+                SELECT
+                    sensor_id,
+                    speed,
+                    timestamp
+                FROM f_sensor_readings
+                WHERE timestamp < (SELECT MIN(timestamp) FROM latest_readings)
+                ORDER BY timestamp DESC
+                LIMIT 100
+            )
+            SELECT * FROM latest_readings
+            UNION ALL
+            SELECT * FROM previous_readings
         """, conn)
-        logging.info(f"총 {len(df)}개의 측정값 데이터 불러오기 완료.")
+
+        logging.info(f"계산 필요한 데이터 {len(df)}개 불러오기 완료.")
 
         if df.empty:
-            logging.info("측정값 데이터가 없어 속도 감소율을 계산할 수 없습니다.")
-            return jsonify({"status": "success", "message": "측정값 데이터가 없어 계산할 내용이 없습니다."})
+            logging.info("계산할 데이터가 없어 속도 감소율을 계산할 내용이 없습니다.")
+            return jsonify({"status": "success", "message": "계산할 데이터가 없습니다."})
 
         # 2. 센서별로 그룹화하여 이전 speed와 비교한 속도 감소율 계산
         df["prev_speed"] = df.groupby("sensor_id")["speed"].shift(1)
         df["speed_drop_rate"] = (df["prev_speed"] - df["speed"]) / df["prev_speed"]
         
-        # 3. NaN 제거 (첫 행은 비교 불가)
-        df = df.dropna(subset=["speed_drop_rate"])
+        # 3. 계산된 결과만 필터링하고, NaN 제거 (첫 행은 비교 불가)
+        df = df[df['rn'] == 1].dropna(subset=["speed_drop_rate"])
         logging.info(f"계산 가능한 {len(df)}개의 측정값에 대한 속도 감소율 계산 완료.")
 
         if df.empty:
@@ -412,21 +434,21 @@ def calculate_speed_drop_rates():
             return jsonify({"status": "success", "message": "계산 가능한 속도 감소율 데이터가 없어 업데이트할 내용이 없습니다."})
 
         # 4. DB 업데이트 실행
-        cursor = conn.cursor()
         update_count = 0
-        # 계산된 DataFrame의 각 행을 반복하며 DB 업데이트
-        for _, row in df.iterrows():
-            try:
-                cursor.execute("""
-                    UPDATE f_sensor_readings
-                    SET speed_drop_rate = %s
-                    WHERE reading_id = %s
-                """, (row["speed_drop_rate"], int(row["reading_id"])))
-                update_count += 1
-            except Exception as update_e:
-                logging.error(f"reading_id {row['reading_id']}의 speed_drop_rate 업데이트 실패: {update_e}")
+        with conn.cursor() as cursor:
+            for _, row in df.iterrows():
+                try:
+                    cursor.execute("""
+                        UPDATE f_sensor_readings
+                        SET speed_drop_rate = %s
+                        WHERE reading_id = %s
+                    """, (row["speed_drop_rate"], int(row["reading_id"])))
+                    update_count += 1
+                except Exception as update_e:
+                    logging.error(f"reading_id {row['reading_id']}의 speed_drop_rate 업데이트 실패: {update_e}")
+            
+            conn.commit() # 모든 업데이트를 한 번에 커밋
         
-        conn.commit() # 모든 업데이트를 한 번에 커밋
         logging.info(f"총 {update_count}개의 측정값에 대한 speed_drop_rate 업데이트 성공.")
         
         return jsonify({"status": "success", "message": f"총 {update_count}개의 측정값에 대한 속도 감소율 업데이트 완료."})
