@@ -1,63 +1,77 @@
+import joblib
+import pandas as pd
+import os
 import logging
+from functools import lru_cache
 
-# 로깅 설정 (app.py와 동일하게 설정)
+# 로깅 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# 전역 변수로 모델을 저장할 변수 선언
-_model = None 
+class MLModelInterface:
+    def __init__(self):
+        # 🔽 경로 설정 (상대경로 → 절대경로로 수정 가능)
+        model_dir = "models"
+        model_path = os.path.join(model_dir, 'random_forest_model.joblib')
+        feature_cols_path = os.path.join(model_dir, 'feature_columns.joblib')
 
-def load_model():
-    """
-    모델을 로드하는 함수.
-    현재는 더미 모델 로딩을 흉내내지만, 실제 모델 파일 (.pkl, .joblib 등)을 로드하도록 수정됩니다.
-    """
-    global _model
-    if _model is None:
-        try:
-            # TODO: 실제 모델 로딩 코드 추가 (예: joblib.load('your_model.pkl'))
-            # 현재는 단순히 "더미 모델 로드됨"을 흉내냅니다.
-            _model = "dummy_random_forest_model" 
-            logging.info("더미 예측 모델을 로드했습니다.")
-        except Exception as e:
-            logging.error(f"모델 로드 중 오류 발생: {e}")
-            _model = None # 모델 로드 실패 시 None으로 설정
-    return _model
+        if not os.path.exists(model_path) or not os.path.exists(feature_cols_path):
+            raise FileNotFoundError("❌ 모델 파일을 찾을 수 없습니다. train_and_save_model.py를 먼저 실행하세요.")
 
-def predict_wifi_quality(rssi, ping, speed, location=None, ap_mac_address=None, timestamp=None):
-    """
-    주어진 데이터를 바탕으로 와이파이 품질 문제를 예측하는 함수.
-    실제 모델이 통합되면 이 함수는 로드된 모델을 사용하여 예측을 수행합니다.
-    """
-    model = load_model()
-    if model is None:
+        self.model = joblib.load(model_path)
+        self.feature_columns = joblib.load(feature_cols_path)
+        logging.info(f"✅ 머신러닝 모델이 성공적으로 로드되었습니다. 예상 피처: {self.feature_columns}")
+
+    def predict(self, new_data_dict):
+        new_data_df = pd.DataFrame([new_data_dict])
+
+        # 누락된 피처 확인
+        missing_cols = set(self.feature_columns) - set(new_data_df.columns)
+        if missing_cols:
+            raise ValueError(f"입력 데이터에 필수 피처가 누락되었습니다: {list(missing_cols)}")
+
+        # 피처 순서 정렬
+        preprocessed_data = new_data_df[self.feature_columns]
+        prediction = self.model.predict(preprocessed_data)
+
+        return prediction[0]
+
+# 모델 인스턴스 싱글톤 캐싱
+try:
+    _model_interface = MLModelInterface()
+except FileNotFoundError as e:
+    logging.error(e)
+    _model_interface = None
+
+@lru_cache(maxsize=1)
+def get_model_interface():
+    return _model_interface
+
+def predict_wifi_quality(rssi, avg_d_kbps, avg_lat_ms, timeout, **kwargs):
+    model_interface = get_model_interface()
+
+    if model_interface is None:
         logging.error("예측 모델이 로드되지 않았습니다. 더미 예측을 사용합니다.")
-        return dummy_predict_logic(rssi, ping, speed) # 모델 로드 실패 시 더미 로직 사용
-    
-    # TODO: 실제 모델을 사용하여 예측하는 코드 구현
-    # 예시:
-    # features = [[rssi, ping, speed, ...]] # 모델 입력에 맞게 특성 배열 생성
-    # prediction = model.predict(features)[0] 
-    # return map_prediction_to_problem_type(prediction) # 모델 출력값을 문제 유형으로 매핑
-    
-    # 현재는 모델이 없으므로 더미 로직을 반환
-    logging.info(f"모델({model})을 사용하여 예측 중 (더미): RSSI={rssi}, Ping={ping}, Speed={speed}")
-    return dummy_predict_logic(rssi, ping, speed)
+        if rssi < -80 and avg_lat_ms > 100:
+            return "트래픽증가"
+        elif avg_d_kbps < 5 and avg_lat_ms > 50:
+            return "통신사백홀문제"
+        elif rssi > -50 and avg_lat_ms < 20 and avg_d_kbps > 10:
+            return "정상"
+        else:
+            return "공유기문제"
 
+    features = {
+        'rssi': rssi,
+        'avg_d_kbps': avg_d_kbps,
+        'avg_lat_ms': avg_lat_ms,
+        'timeout': timeout
+    }
 
-def dummy_predict_logic(rssi, ping, speed):
-    """
-    모델이 없을 때 예측을 흉내내는 더미 로직.
-    실제 모델이 준비되면 이 함수는 삭제되거나, 실제 모델의 예측 로직으로 대체됩니다.
-    """
-    if rssi < -80 and ping > 100:
-        return "전파간섭"
-    elif speed < 5 and ping > 50:
-        return "통신사백홀문제"
-    elif rssi > -50 and ping < 20 and speed > 10:
-        return "정상"
-    else:
-        return "공유기문제" # 임의의 기본값
+    try:
+        prediction = model_interface.predict(features)
+        return prediction
+    except Exception as e:
+        logging.error(f"예측 중 오류 발생: {e}")
+        return "예측_오류"
 
-# 이 파일이 임포트될 때 모델을 미리 로드하도록 호출
-# 앱이 시작될 때 한 번만 로드되도록 합니다.
-load_model()
+get_model_interface()
