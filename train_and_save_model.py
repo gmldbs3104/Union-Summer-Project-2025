@@ -15,7 +15,7 @@ print("모델 학습 및 저장 프로세스를 시작합니다...")
 
 # --- 1. 엑셀 파일에서 데이터 불러오기 ---
 # TODO: 아래 변수 값을 실제 엑셀 파일 경로로 수정하세요.
-excel_file_path = 'C:/Users/kimze/OneDrive/동국대학교/동아리/FarmSystem/Union-Summer-Project-2025/wifi_classification_dummy_data_with_rssi.xlsx' # 사용자 경로로 업데이트
+excel_file_path = 'C:/Users/pjh0836/OneDrive/Desktop/projectproject/wifi_classification_dummy_data_with_rssi.xlsx' # 사용자 경로로 업데이트
 
 try:
     # pandas를 사용하여 엑셀 파일 불러오기
@@ -24,8 +24,8 @@ try:
 
     # 모델 학습에 사용할 실제 컬럼명 리스트
     # 엑셀 파일의 컬럼명에 맞춰 'issue_type'을 라벨로,
-    # 'rssi', 'avg_d_kbps', 'avg_lat_ms', 'timeout'을 피처로 사용합니다.
-    expected_columns = ['rssi', 'avg_d_kbps', 'avg_lat_ms', 'timeout', 'issue_type']
+    # 'rssi', 'speed', 'ping', 'timeout'을 피처로 사용합니다.
+    expected_columns = ['rssi', 'speed', 'ping', 'timeout', 'issue_type']
 
     if not all(col in df_train.columns for col in expected_columns):
         print("⚠️ 경고: 엑셀 파일의 컬럼명에 모델 학습에 필요한 컬럼 중 누락된 것이 있습니다.")
@@ -59,7 +59,7 @@ except ValueError as e:
 y = df_train['issue_type']
 # 라벨 컬럼을 제외한 모든 피처를 사용하거나, 특정 피처만 선택할 수 있습니다.
 # 여기서는 엑셀 파일에 있는 피처 중 모델 학습에 사용할 피처를 명시적으로 선택합니다.
-model_features = ['rssi', 'avg_d_kbps', 'avg_lat_ms', 'timeout']
+model_features = ['rssi', 'speed', 'ping', 'timeout']
 X_encoded = df_train[model_features].copy()
 
 # 데이터를 훈련 세트와 테스트 세트로 분할 (80% 훈련, 20% 테스트)
