@@ -59,7 +59,7 @@ except ValueError as e:
 y = df_train['issue_type']
 # 라벨 컬럼을 제외한 모든 피처를 사용하거나, 특정 피처만 선택할 수 있습니다.
 # 여기서는 엑셀 파일에 있는 피처 중 모델 학습에 사용할 피처를 명시적으로 선택합니다.
-model_features = ['rssi', 'speed', 'ping', 'timeout']
+model_features = ['rssi', 'speed', 'ping', 'timeout', 'speed_drop_rate']
 X_encoded = df_train[model_features].copy()
 
 # 데이터를 훈련 세트와 테스트 세트로 분할 (80% 훈련, 20% 테스트)

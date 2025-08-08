@@ -255,7 +255,7 @@ def predict():
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT sr.rssi, sr.ping, sr.speed, s.location, s.ap_mac_address, sr.timestamp, s.sensor_id
+                SELECT sr.rssi, sr.ping, sr.speed, s.location, s.ap_mac_address, sr.timestamp, s.sensor_id, sr.ping_timeout, sr.speed_drop_rate
                 FROM f_sensor_readings sr
                 JOIN f_sensors s ON sr.sensor_id = s.sensor_id
                 WHERE sr.reading_id = %s
@@ -275,6 +275,8 @@ def predict():
                 reading_data['rssi'],
                 reading_data['ping'],
                 reading_data['speed'],
+                reading_data['ping_timeout'],
+                reading_data['speed_drop_rate'] or 0.0, # None일 경우 0.0으로 처리
                 location=reading_data['location'],
                 ap_mac_address=reading_data['ap_mac_address'],
                 timestamp=reading_data['timestamp']

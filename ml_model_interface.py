@@ -46,7 +46,7 @@ except FileNotFoundError as e:
 def get_model_interface():
     return _model_interface
 
-def predict_wifi_quality(rssi, speed, ping, timeout, **kwargs):
+def predict_wifi_quality(rssi, speed, ping, timeout, speed_drop_rate, **kwargs):
     model_interface = get_model_interface()
 
     if model_interface is None:
@@ -64,7 +64,8 @@ def predict_wifi_quality(rssi, speed, ping, timeout, **kwargs):
         'rssi': rssi,
         'speed': speed,
         'ping': ping,
-        'timeout': timeout
+        'timeout': timeout,
+        'speed_drop_rate': speed_drop_rate
     }
 
     try:
