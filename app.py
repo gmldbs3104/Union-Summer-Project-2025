@@ -101,7 +101,7 @@ app = Flask(__name__)
 def index():
     return "<h1>Welcome to My Flask App!</h1>"
 
-# --- 데이터 수집/업로드 API (여러 센서 데이터를 리스트로 받아 처리) ---
+# --- 데이터 수집/업로드 및 예측 실행 API ---
 @app.route("/upload", methods=["POST"])
 def upload():
     conn = None
@@ -114,7 +114,9 @@ def upload():
         conn = get_db_connection()
         with conn.cursor() as cursor:
             inserted = 0
+            new_reading_ids = [] # 예측을 요청할 ID들을 저장할 리스트
 
+            # 1. 데이터를 먼저 모두 저장합니다.
             for data in data_list:
                 sensor_mac = data.get("sensor_mac", "알 수 없음")
                 timestamp = data.get("timestamp", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
@@ -154,44 +156,58 @@ def upload():
                 # --- 속도 감소율 계산 로직 ---
                 speed_drop_rate = 0.0
                 try:
-                    # 이전 레코드의 speed 값을 가져오기
                     cursor.execute("""
-                        SELECT speed
-                        FROM f_sensor_readings
+                        SELECT speed FROM f_sensor_readings
                         WHERE sensor_id = %s AND timestamp < %s
-                        ORDER BY timestamp DESC
-                        LIMIT 1
+                        ORDER BY timestamp DESC LIMIT 1
                     """, (sensor_id, timestamp))
                     prev_speed_data = cursor.fetchone()
                     
                     if prev_speed_data and prev_speed_data['speed'] > 0:
                         prev_speed = prev_speed_data['speed']
                         speed_drop_rate = (prev_speed - speed) / prev_speed
-                        logging.info(f"센서 {sensor_id}의 속도 감소율 계산 완료: {speed_drop_rate}")
                     else:
-                        logging.info(f"센서 {sensor_id}의 첫 데이터이거나 이전 속도가 0이므로 속도 감소율을 0.0으로 설정.")
                         speed_drop_rate = 0.0
                 except Exception as e:
                     logging.error(f"속도 감소율 계산 중 오류 발생: {e}")
-                    speed_drop_rate = None # 계산 실패 시 NULL로 저장
+                    speed_drop_rate = None
 
-                # 6. 측정값 데이터베이스에 저장
+                # 측정값 데이터베이스에 저장
                 try:
                     insert_sql = """
                         INSERT INTO f_sensor_readings (sensor_id, timestamp, rssi, ping, speed, ping_timeout, speed_drop_rate)
                         VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """
                     cursor.execute(insert_sql, (sensor_id, timestamp, rssi, ping, speed, ping_timeout, speed_drop_rate))
+                    
+                    # 방금 저장된 데이터의 고유 ID(reading_id)를 가져와 리스트에 추가
+                    new_reading_ids.append(cursor.lastrowid)
                     inserted += 1
-                    logging.info(f"센서 {sensor_mac} 데이터 저장 성공 at {timestamp}")
                 except Exception as e:
                     logging.warning(f"DB 삽입 오류: {e} / 데이터: {data}")
                     send_slack_notification(sensor_id_for_alert, location_for_alert, f"데이터 저장 중 DB 오류 발생: {str(e)}", timestamp, level="ERROR")
                     continue
             
-            conn.commit()
-            
-        return jsonify({"status": "success", "message": f"총 {inserted}개의 측정값 저장 완료.", "inserted_count": inserted})
+            # 모든 데이터 저장이 정상적으로 끝나면 최종 확정(commit)
+            if inserted > 0:
+                conn.commit()
+
+            # 2. 저장에 성공한 모든 데이터 ID에 대해 예측을 요청합니다.
+            logging.info(f"총 {len(new_reading_ids)}개의 새 데이터에 대한 예측을 시작합니다.")
+            for reading_id in new_reading_ids:
+                try:
+                    # 서버 자기 자신의 /predict API에 요청을 보냅니다.
+                    # ❗️ Gunicorn 실행 포트가 5000이 아니면 이 숫자를 바꿔야 합니다.
+                    predict_url = 'http://127.0.0.1:5000/predict' 
+                    payload = {'reading_id': reading_id}
+                    
+                    response = requests.post(predict_url, json=payload, timeout=10) 
+                    response.raise_for_status()
+                    logging.info(f"ID {reading_id}에 대한 예측 요청 성공. 응답: {response.json()}")
+                except requests.exceptions.RequestException as e:
+                    logging.error(f"ID {reading_id}에 대한 예측 API 호출 실패: {e}")
+
+            return jsonify({"status": "success", "message": f"총 {inserted}개 측정값 저장 및 예측 요청 완료."})
 
     except Exception as e:
         logging.exception(f"/upload API 처리 중 예상치 못한 오류 발생: {e}")
@@ -230,28 +246,11 @@ def get_recent_readings():
 # --- 데이터 예측 API ---
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.get_json()
-    reading_id_for_alert = data.get("reading_id", "N/A")
-    sensor_id_for_alert = "N/A"
-    location_for_alert = "알 수 없음"
-    timestamp_for_alert = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    required_keys = ["reading_id"]
-    if not all(k in data for k in required_keys):
-        logging.warning(f"예측 요청 필드 누락: {data}")
-        send_slack_notification("시스템", "서버", "예측 요청 필수 필드 누락", timestamp_for_alert, level="WARNING")
-        return jsonify({"status": "error", "message": "예측에 필요한 'reading_id' 필드가 누락되었습니다."}), 400
-
-    try:
-        reading_id = int(data["reading_id"])
-        reading_id_for_alert = reading_id
-    except (ValueError, TypeError):
-        logging.warning(f"reading_id 타입 오류: {data['reading_id']}")
-        send_slack_notification("시스템", "서버", f"예측 요청 Reading ID 형식 오류: {data.get('reading_id', '없음')}", timestamp_for_alert, level="WARNING")
-        return jsonify({"status": "error", "message": "reading_id는 정수여야 합니다."}), 400
-
     conn = None
     try:
+        data = request.get_json()
+        reading_id = int(data["reading_id"])
+
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -264,19 +263,14 @@ def predict():
 
             if not reading_data:
                 logging.error(f"reading_id {reading_id}에 해당하는 데이터 없음.")
-                send_slack_notification("시스템", "서버", f"예측 대상 측정값 없음 (Reading ID: {reading_id})", timestamp_for_alert, level="ERROR")
                 return jsonify({"status": "error", "message": f"reading_id {reading_id}에 해당하는 측정값을 찾을 수 없습니다."}), 404
 
-            sensor_id_for_alert = reading_data['sensor_id']
-            location_for_alert = reading_data['location']
-            timestamp_for_alert = reading_data['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
-
             predicted_problem_type = predict_wifi_quality(
-                reading_data['rssi'],
-                reading_data['ping'],
-                reading_data['speed'],
-                reading_data['ping_timeout'],
-                reading_data['speed_drop_rate'] or 0.0, # None일 경우 0.0으로 처리
+                rssi=reading_data['rssi'],
+                speed=reading_data['speed'],
+                ping=reading_data['ping'],
+                timeout=reading_data['ping_timeout'],
+                speed_drop_rate=reading_data['speed_drop_rate'] or 0.0,
                 location=reading_data['location'],
                 ap_mac_address=reading_data['ap_mac_address'],
                 timestamp=reading_data['timestamp']
@@ -290,7 +284,7 @@ def predict():
             conn.commit()
 
         logging.info(f"reading_id {reading_id}에 대한 예측 및 저장 성공. 결과: {predicted_problem_type}")
-        send_slack_notification(sensor_id_for_alert, location_for_alert, f"예측 결과: {predicted_problem_type}", timestamp_for_alert, level="INFO")
+        send_slack_notification(reading_data['sensor_id'], reading_data['location'], f"예측 결과: {predicted_problem_type}", reading_data['timestamp'].strftime('%Y-%m-%d %H:%M:%S'), level="INFO")
 
         return jsonify({
             "status": "success",
@@ -300,12 +294,13 @@ def predict():
         })
     except Exception as e:
         logging.exception(f"예측 API 오류 발생 /predict: {e}")
-        send_slack_notification(sensor_id_for_alert, location_for_alert, f"예측 처리 중 시스템 오류 발생: {str(e)}", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), level="ERROR")
+        if conn:
+            conn.rollback()
         return jsonify({"status": "error", "message": "예측 처리 중 오류 발생"}), 500
     finally:
         if conn:
             conn.close()
 
-# 서버 실행 (테스트 서버용 - Gunicorn/Nginx 사용 시 주석 처리)
+# 서버 실행 (로컬 테스트용)
 # if __name__ == "__main__":
-#   app.run(host="0.0.0.0", port=5000, debug=True)
+#     app.run(host="0.0.0.0", port=5000, debug=True)
