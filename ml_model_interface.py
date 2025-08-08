@@ -46,24 +46,24 @@ except FileNotFoundError as e:
 def get_model_interface():
     return _model_interface
 
-def predict_wifi_quality(rssi, avg_d_kbps, avg_lat_ms, timeout, **kwargs):
+def predict_wifi_quality(rssi, speed, ping, timeout, **kwargs):
     model_interface = get_model_interface()
 
     if model_interface is None:
         logging.error("예측 모델이 로드되지 않았습니다. 더미 예측을 사용합니다.")
-        if rssi < -80 and avg_lat_ms > 100:
+        if rssi < -80 and ping > 100:
             return "트래픽증가"
-        elif avg_d_kbps < 5 and avg_lat_ms > 50:
+        elif speed < 5 and ping > 50:
             return "통신사백홀문제"
-        elif rssi > -50 and avg_lat_ms < 20 and avg_d_kbps > 10:
+        elif rssi > -50 and ping < 20 and speed > 10:
             return "정상"
         else:
             return "공유기문제"
 
     features = {
         'rssi': rssi,
-        'avg_d_kbps': avg_d_kbps,
-        'avg_lat_ms': avg_lat_ms,
+        'speed': speed,
+        'ping': ping,
         'timeout': timeout
     }
 
