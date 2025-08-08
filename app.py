@@ -306,4 +306,4 @@ def predict():
 
 # 서버 실행 (테스트 서버용 - Gunicorn/Nginx 사용 시 주석 처리)
 # if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=5000, debug=True)
+#   app.run(host="0.0.0.0", port=5000, debug=True)
