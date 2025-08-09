@@ -145,6 +145,10 @@ def upload_and_predict():
 
                 # 5. 예측 결과를 DB에 저장
                 insert_diagnosis_sql = "INSERT INTO f_diagnosis_results (reading_id, problem_type) VALUES (%s, %s)"
+
+                # 🔽🔽 이 로그를 추가해서 변수 값을 직접 확인! 🔽🔽
+                logging.info(f"DB 저장 직전 값 확인 -> reading_id: {reading_id}, problem_type: '{predicted_problem_type}' (타입: {type(predicted_problem_type)})")
+
                 cursor.execute(insert_diagnosis_sql, (reading_id, predicted_problem_type))
                 conn.commit()
                 logging.info(f"ID {reading_id}: 예측 결과 저장 성공.")
@@ -223,5 +227,5 @@ def predict():
             conn.close()
 
 # 서버 실행 (로컬 테스트용)
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=5000, debug=True)
+#if __name__ == "__main__":
+#    app.run(host="0.0.0.0", port=5000, debug=True)
