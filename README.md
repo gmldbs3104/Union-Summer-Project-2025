@@ -1,5 +1,6 @@
 # Wivue 위뷰
 본 프로젝트는 교내 와이파이 품질 문제의 근본적인 해결을 목표로 하는 **AI 기반 와이파이 장애 진단 및 대응 지원 시스템**입니다. 
+[발표 자료 링크](https://www.figma.com/proto/tArarlOxbjTUDeoSflWEu9/Union-%EB%B0%A9%ED%95%99-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8?node-id=661-783&t=93ZImVVQMSQedC45-1&scaling=min-zoom&content-scaling=fixed&page-id=602%3A6&starting-point-node-id=661%3A783) |
 <br>
   
 ## 💡 주요 기능
@@ -36,17 +37,6 @@
 
 <br>
 
-## 🧑‍💻 역할 분담
-- 김영모: 컴퓨터공학전공, 머신러닝
-- 박재현: 전자전기공학부, 하드웨어
-- 박재홍: 컴퓨터공학전공, 머신러닝
-- 주희윤: 컴퓨터공학전공, PM, 백엔드
-- 차영준: 컴퓨터공학전공, DB, 서버
-<br>
-
-## 시연영상
-[![팜 시스템_방학 프로젝트_운영진팀_최종구현](https://img.youtube.com/vi/8BXFbRDyLbA/hqdefault.jpg)](https://www.youtube.com/watch?v=8BXFbRDyLbA&feature=youtu.be)
-
 ## 📊 머신러닝 성능 평가
 - AI 기반 와이파이 장애 진단 시스템은 랜덤 포레스트(RandomForestClassifier) 알고리즘을 사용합니다.
 - 학습에는 각 문제 유형별 1,000개씩, 정상값 5,000개를 포함하여 총 10,000개의 더미 데이터셋이 사용되었습니다.
@@ -57,4 +47,15 @@
 | **DHCP/IP 충돌, 공유기 문제, 전파 간섭, 정상** | 정확도 100% |
 | **통신사 백홀 문제** | 정밀도 69%, 재현율 78% |
 | **트래픽 증가 문제** | 정밀도 77%, 재현율 67% |
+<br>
 
+## 🧑‍💻 역할 분담
+- **김영모**: 컴퓨터공학전공, 머신러닝
+- **박재현**: 전자전기공학부, 하드웨어
+- **박재홍**: 컴퓨터공학전공, 머신러닝
+- **주희윤**: 컴퓨터공학전공, PM, 백엔드
+- **차영준**: 컴퓨터공학전공, DB, 서버
+<br>
+
+## 시연영상
+[![팜 시스템_방학 프로젝트_운영진팀_최종구현](https://img.youtube.com/vi/8BXFbRDyLbA/hqdefault.jpg)](https://www.youtube.com/watch?v=8BXFbRDyLbA&feature=youtu.be)
