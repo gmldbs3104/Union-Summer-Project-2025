@@ -1,12 +1,9 @@
-# 서버 IP: http://13.125.38.1/
-
 # 라이브러리 불러오기
 from flask import Flask, request, jsonify, render_template
 from datetime import datetime
 import pymysql
 import logging
-import requests # HTTP 요청 보내기
-import pandas as pd # pandas 라이브러리 추가
+import requests
 
 # 머신러닝 모듈 임포트
 from ml_model_interface import predict_wifi_quality
@@ -36,40 +33,26 @@ def send_slack_notification(sensor_id, location, problem_reason, occurred_at, le
     else:
         color = "#cccccc"
 
-    message_text = f"🚨 [WiFi 진단 시스템 알림 - {level}] 🚨\n" \
-                   f"• 센서 ID: `{sensor_id}`\n" \
-                   f"• 센서 위치: `{location}`\n" \
-                   f"• 장애 원인: `{problem_reason}`\n" \
-                   f"• 발생 시각: `{occurred_at}`"
+    message_text = (
+        f"🚨 [WiFi 진단 시스템 알림 - {level}] 🚨\n"
+        f"• 센서 ID: `{sensor_id}`\n"
+        f"• 센서 위치: `{location}`\n"
+        f"• 장애 원인: `{problem_reason}`\n"
+        f"• 발생 시각: `{occurred_at}`"
+    )
 
     slack_payload = {
-        "text": message_text, 
-        "attachments": [ 
+        "text": message_text,
+        "attachments": [
             {
-                "color": color, 
-                "fields": [ 
-                    {
-                        "title": "센서 ID",
-                        "value": str(sensor_id),
-                        "short": True 
-                    },
-                    {
-                        "title": "센서 위치",
-                        "value": location,
-                        "short": True
-                    },
-                    {
-                        "title": "장애 원인",
-                        "value": problem_reason,
-                        "short": False 
-                    },
-                    {
-                        "title": "발생 시각",
-                        "value": occurred_at,
-                        "short": True
-                    }
+                "color": color,
+                "fields": [
+                    {"title": "센서 ID", "value": str(sensor_id), "short": True},
+                    {"title": "센서 위치", "value": location, "short": True},
+                    {"title": "장애 원인", "value": problem_reason, "short": False},
+                    {"title": "발생 시각", "value": occurred_at, "short": True}
                 ],
-                "footer": "WiFi Diagnosis System" 
+                "footer": "WiFi Diagnosis System"
             }
         ]
     }
@@ -80,16 +63,15 @@ def send_slack_notification(sensor_id, location, problem_reason, occurred_at, le
         logging.info(f"Slack 알림 전송 성공 (Level: {level}, Sensor ID: {sensor_id})")
     except requests.exceptions.RequestException as e:
         logging.error(f"Slack 알림 전송 실패: {e}")
-        logging.error(f"Slack Payload: {slack_payload}")
 
 # 데이터 베이스 연결 함수
 def get_db_connection():
     return pymysql.connect(
-        host='localhost', 
-        user='union2025', 
-        password='Union2025@', 
-        database='wifi_diagnosis_system', 
-        charset='utf8mb4', 
+        host='localhost',
+        user='union2025',
+        password='Union2025@',
+        database='wifi_diagnosis_system',
+        charset='utf8mb4',
         cursorclass=pymysql.cursors.DictCursor
     )
 
@@ -99,105 +81,122 @@ app = Flask(__name__)
 # --- 기본 라우트 ---
 @app.route('/')
 def index():
-    return "<h1>Welcome to My Flask App!</h1>"
+    return "<h1>WiFi Diagnosis System is Running</h1>"
 
-# --- 데이터 수집/업로드 API (여러 센서 데이터를 리스트로 받아 처리) ---
+# --- 데이터 수집, 저장, 예측을 한 번에 처리하는 API ---
 @app.route("/upload", methods=["POST"])
-def upload():
+def upload_and_predict():
     conn = None
     try:
         data_list = request.get_json()
         if not isinstance(data_list, list):
-            logging.warning(f"잘못된 요청 형식: 데이터는 리스트 형식이어야 합니다. 수신된 데이터: {data_list}")
             return jsonify({"status": "error", "message": "데이터는 리스트 형식이어야 합니다."}), 400
 
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            inserted = 0
-
+            processed_count = 0
             for data in data_list:
+                # 1. 데이터 검증 및 전처리
                 sensor_mac = data.get("sensor_mac", "알 수 없음")
-                timestamp = data.get("timestamp", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-                sensor_id_for_alert = "N/A"
-                location_for_alert = "알 수 없음"
-                
-                required_keys = ["sensor_mac", "rssi", "ping", "speed", "timestamp", "ping_timeout"]
-                if not all(k in data for k in required_keys):
-                    logging.warning(f"필수 필드 누락: {data}")
-                    send_slack_notification(sensor_mac, location_for_alert, "필수 필드 누락", timestamp, level="WARNING")
-                    continue
-
+                timestamp_str = data.get("timestamp", datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
                 try:
                     rssi = float(data["rssi"])
                     ping = float(data["ping"])
                     speed = float(data["speed"])
-                    datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
                     ping_timeout = bool(data["ping_timeout"])
-                except (ValueError, TypeError) as e:
-                    logging.warning(f"데이터 형식 오류: {e} / 수신된 데이터: {data}")
-                    send_slack_notification(sensor_mac, location_for_alert, "측정 데이터 형식 오류", timestamp, level="WARNING")
+                except (ValueError, TypeError, KeyError) as e:
+                    logging.warning(f"데이터 형식/필드 오류: {e} / 수신 데이터: {data}")
                     continue
 
-                cursor.execute("SELECT sensor_id, location FROM f_sensors WHERE ap_mac_address = %s", (sensor_mac,))
+                cursor.execute(
+                    "SELECT sensor_id, location FROM f_sensors WHERE ap_mac_address = %s",
+                    (sensor_mac,)
+                )
                 sensor = cursor.fetchone()
-
                 if not sensor:
                     logging.warning(f"미등록 MAC 주소: {sensor_mac}")
-                    send_slack_notification(sensor_mac, location_for_alert, "미등록 센서 MAC 주소", timestamp, level="WARNING")
                     continue
 
                 sensor_id = sensor["sensor_id"]
                 location = sensor["location"]
-                sensor_id_for_alert = sensor_id
-                location_for_alert = location
-                
-                # --- 속도 감소율 계산 로직 ---
+
+                # 2. 속도 감소율 계산
                 speed_drop_rate = 0.0
                 try:
-                    # 이전 레코드의 speed 값을 가져오기
-                    cursor.execute("""
-                        SELECT speed
-                        FROM f_sensor_readings
-                        WHERE sensor_id = %s AND timestamp < %s
-                        ORDER BY timestamp DESC
-                        LIMIT 1
-                    """, (sensor_id, timestamp))
+                    cursor.execute(
+                        "SELECT speed FROM f_sensor_readings "
+                        "WHERE sensor_id = %s AND timestamp < %s "
+                        "ORDER BY timestamp DESC LIMIT 1",
+                        (sensor_id, timestamp_str)
+                    )
                     prev_speed_data = cursor.fetchone()
-                    
                     if prev_speed_data and prev_speed_data['speed'] > 0:
-                        prev_speed = prev_speed_data['speed']
-                        speed_drop_rate = (prev_speed - speed) / prev_speed
-                        logging.info(f"센서 {sensor_id}의 속도 감소율 계산 완료: {speed_drop_rate}")
-                    else:
-                        logging.info(f"센서 {sensor_id}의 첫 데이터이거나 이전 속도가 0이므로 속도 감소율을 0.0으로 설정.")
-                        speed_drop_rate = 0.0
+                        speed_drop_rate = (prev_speed_data['speed'] - speed) / prev_speed_data['speed']
                 except Exception as e:
-                    logging.error(f"속도 감소율 계산 중 오류 발생: {e}")
-                    speed_drop_rate = None # 계산 실패 시 NULL로 저장
+                    logging.error(f"속도 감소율 계산 중 오류: {e}")
+                    speed_drop_rate = 0.0  # 오류 시 0으로 처리
 
-                # 6. 측정값 데이터베이스에 저장
-                try:
-                    insert_sql = """
-                        INSERT INTO f_sensor_readings (sensor_id, timestamp, rssi, ping, speed, ping_timeout, speed_drop_rate)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """
-                    cursor.execute(insert_sql, (sensor_id, timestamp, rssi, ping, speed, ping_timeout, speed_drop_rate))
-                    inserted += 1
-                    logging.info(f"센서 {sensor_mac} 데이터 저장 성공 at {timestamp}")
-                except Exception as e:
-                    logging.warning(f"DB 삽입 오류: {e} / 데이터: {data}")
-                    send_slack_notification(sensor_id_for_alert, location_for_alert, f"데이터 저장 중 DB 오류 발생: {str(e)}", timestamp, level="ERROR")
-                    continue
-            
-            conn.commit()
-            
-        return jsonify({"status": "success", "message": f"총 {inserted}개의 측정값 저장 완료.", "inserted_count": inserted})
+                # 3. 측정값 DB 저장
+                insert_sql = (
+                    "INSERT INTO f_sensor_readings "
+                    "(sensor_id, timestamp, rssi, ping, speed, ping_timeout, speed_drop_rate) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                )
+                cursor.execute(
+                    insert_sql,
+                    (sensor_id, timestamp_str, rssi, ping, speed, ping_timeout, speed_drop_rate)
+                )
+                reading_id = cursor.lastrowid
+                conn.commit()
+                logging.info(f"ID {reading_id}: 데이터 저장 성공.")
+
+                # 4. 저장된 데이터로 "바로" 예측 실행
+                predicted_problem_type = predict_wifi_quality(
+                    rssi=rssi,
+                    speed=speed,
+                    ping=ping,
+                    timeout=ping_timeout,
+                    speed_drop_rate=speed_drop_rate or 0.0
+                )
+                logging.info(f"ID {reading_id}: 예측 완료. 결과: {predicted_problem_type}")
+
+                # 5. 예측 결과를 DB에 저장
+                insert_diagnosis_sql = (
+                    "INSERT INTO f_diagnosis_results (reading_id, problem_type) "
+                    "VALUES (%s, %s)"
+                )
+
+                logging.info(
+                    f"DB 저장 직전 값 확인 -> reading_id: {reading_id}, "
+                    f"problem_type: '{predicted_problem_type}' (타입: {type(predicted_problem_type)})"
+                )
+
+                cursor.execute(insert_diagnosis_sql, (reading_id, predicted_problem_type))
+                conn.commit()
+                logging.info(f"ID {reading_id}: 예측 결과 저장 성공.")
+
+                # 6. Slack 알림 전송 (정상은 전송 생략)
+                pt = str(predicted_problem_type)  # numpy.str_ 등 대비
+                if pt != "정상":
+                    # 필요시 레벨 조정: 트래픽증가는 WARNING, 그 외 ERROR 예시
+                    level = "WARNING" if pt in ("트래픽증가",) else "ERROR"
+                    send_slack_notification(
+                        sensor_id, location, f"예측 결과: {pt}", timestamp_str, level=level
+                    )
+                    logging.info(f"ID {reading_id}: Slack 알림 전송 ({level})")
+                else:
+                    logging.info(f"ID {reading_id}: 예측 결과 정상 → Slack 알림 생략")
+
+                processed_count += 1
+
+            return jsonify({"status": "success", "message": f"총 {processed_count}개의 데이터 처리 및 예측 완료."})
 
     except Exception as e:
         logging.exception(f"/upload API 처리 중 예상치 못한 오류 발생: {e}")
-        send_slack_notification("시스템", "서버", f"데이터 업로드 API 처리 중 서버 내부 오류 발생: {str(e)}", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), level="ERROR")
+        if conn:
+            conn.rollback()  # 오류 발생 시 DB 변경사항 되돌리기
         return jsonify({"status": "error", "message": "서버 내부 오류 발생"}), 500
-    
+
     finally:
         if conn:
             conn.close()
@@ -209,126 +208,70 @@ def get_recent_readings():
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            # 1. 데이터베이스 쿼리 실행
             cursor.execute("""
-                SELECT sr.reading_id, s.location, s.ap_mac_address, sr.timestamp, sr.rssi, sr.ping, sr.speed, sr.ping_timeout, sr.speed_drop_rate
+                SELECT sr.reading_id, s.location, s.ap_mac_address, sr.timestamp,
+                       sr.rssi, sr.ping, sr.speed, sr.ping_timeout, sr.speed_drop_rate
                 FROM f_sensor_readings sr
                 JOIN f_sensors s ON sr.sensor_id = s.sensor_id
                 ORDER BY sr.timestamp DESC
                 LIMIT 10
             """)
             results = cursor.fetchall()
-            
-        logging.info("최근 10개 데이터 조회 성공")
-        # 2. 성공 시 JSON 응답 반환
         return jsonify({"status": "success", "data": results})
-        
-    except pymysql.MySQLError as e:
-        # 데이터베이스 관련 오류 발생 시
-        logging.exception(f"DB 오류 발생 /readings: {e}")
-        send_slack_notification("시스템", "서버", f"데이터 조회 중 DB 오류 발생: {str(e)}", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), level="ERROR")
-        # 500 Internal Server Error 반환
-        return jsonify({"status": "error", "message": "DB 오류가 발생하여 데이터를 불러올 수 없습니다."}), 500
-        
     except Exception as e:
-        # 그 외 예상치 못한 오류 발생 시
-        logging.exception(f"예상치 못한 오류 발생 /readings: {e}")
-        send_slack_notification("시스템", "서버", f"데이터 조회 중 예상치 못한 오류 발생: {str(e)}", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), level="ERROR")
-        # 500 Internal Server Error 반환
-        return jsonify({"status": "error", "message": "서버 내부 오류가 발생했습니다."}), 500
-        
+        logging.exception(f"DB 오류 발생 /readings: {e}")
+        return jsonify({"status": "error", "message": "DB 오류 발생"}), 500
     finally:
-        # 3. 연결이 열려있으면 반드시 닫기
         if conn:
             conn.close()
 
-# --- 데이터 예측 API ---
+# --- 참고용: 수동으로 재분석할 때 사용하는 API ---
 @app.route("/predict", methods=["POST"])
 def predict():
-    data = request.get_json()
-    reading_id_for_alert = data.get("reading_id", "N/A")
-    sensor_id_for_alert = "N/A"
-    location_for_alert = "알 수 없음"
-    timestamp_for_alert = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
-    required_keys = ["reading_id"]
-    if not all(k in data for k in required_keys):
-        logging.warning(f"예측 요청 필드 누락: {data}")
-        send_slack_notification("시스템", "서버", "예측 요청 필수 필드 누락", timestamp_for_alert, level="WARNING")
-        return jsonify({"status": "error", "message": "예측에 필요한 'reading_id' 필드가 누락되었습니다."}), 400
-
-    try:
-        reading_id = int(data["reading_id"])
-        reading_id_for_alert = reading_id
-    except (ValueError, TypeError):
-        logging.warning(f"reading_id 타입 오류: {data['reading_id']}")
-        send_slack_notification("시스템", "서버", f"예측 요청 Reading ID 형식 오류: {data.get('reading_id', '없음')}", timestamp_for_alert, level="WARNING")
-        return jsonify({"status": "error", "message": "reading_id는 정수여야 합니다."}), 400
-
     conn = None
     try:
+        data = request.get_json()
+        reading_id = int(data["reading_id"])
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            # SQL 쿼리를 수정하여 speed_drop_rate와 ping_timeout을 추가로 가져오도록 변경
-            cursor.execute("""
-                SELECT sr.rssi, sr.ping, sr.speed, sr.speed_drop_rate, sr.ping_timeout, s.location, s.ap_mac_address, sr.timestamp, s.sensor_id
-                FROM f_sensor_readings sr
-                JOIN f_sensors s ON sr.sensor_id = s.sensor_id
-                WHERE sr.reading_id = %s
-            """, (reading_id,))
+            cursor.execute(
+                "SELECT sr.*, s.location, s.ap_mac_address "
+                "FROM f_sensor_readings sr "
+                "JOIN f_sensors s ON sr.sensor_id = s.sensor_id "
+                "WHERE sr.reading_id = %s",
+                (reading_id,)
+            )
             reading_data = cursor.fetchone()
-
             if not reading_data:
-                logging.error(f"reading_id {reading_id}에 해당하는 데이터 없음.")
-                send_slack_notification("시스템", "서버", f"예측 대상 측정값 없음 (Reading ID: {reading_id})", timestamp_for_alert, level="ERROR")
-                return jsonify({"status": "error", "message": f"reading_id {reading_id}에 해당하는 측정값을 찾을 수 없습니다."}), 404
-
-            sensor_id_for_alert = reading_data['sensor_id']
-            location_for_alert = reading_data['location']
-            timestamp_for_alert = reading_data['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
+                return jsonify({"status": "error", "message": "해당 reading_id를 찾을 수 없습니다."}), 404
 
             predicted_problem_type = predict_wifi_quality(
-                reading_data['rssi'],
-                reading_data['ping'],
-                reading_data['speed'],
-                # 수정된 SQL 쿼리에서 가져온 speed_drop_rate와 ping_timeout 인자 추가
-                speed_drop_rate=reading_data['speed_drop_rate'],
-                ping_timeout=reading_data['ping_timeout'],
-                location=reading_data['location'],
-                ap_mac_address=reading_data['ap_mac_address'],
-                timestamp=reading_data['timestamp']
+                rssi=reading_data['rssi'],
+                speed=reading_data['speed'],
+                ping=reading_data['ping'],
+                timeout=reading_data['ping_timeout'],
+                speed_drop_rate=reading_data['speed_drop_rate'] or 0.0
             )
 
-            insert_diagnosis_sql = """
-                INSERT INTO f_diagnosis_results (reading_id, problem_type)
-                VALUES (%s, %s)
-            """
-            cursor.execute(insert_diagnosis_sql, (reading_id, predicted_problem_type))
+            cursor.execute(
+                "INSERT INTO f_diagnosis_results (reading_id, problem_type) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE problem_type = VALUES(problem_type)",
+                (reading_id, predicted_problem_type)
+            )
             conn.commit()
 
-        logging.info(f"reading_id {reading_id}에 대한 예측 및 저장 성공. 결과: {predicted_problem_type}")
-        
-        # '정상'일 경우 Slack 알림을 보내지 않도록 예외 처리
-        if predicted_problem_type != '정상':
-            send_slack_notification(sensor_id_for_alert, location_for_alert, f"예측 결과: {predicted_problem_type}", timestamp_for_alert, level="INFO")
-        else:
-            logging.info("예측 결과가 '정상'이므로 Slack 알림을 보내지 않습니다.")
-        
         return jsonify({
             "status": "success",
-            "message": "예측 완료 및 저장",
-            "reading_id": reading_id,
-            "predicted_problem_type": predicted_problem_type
+            "reading_id": int(reading_id),
+            "predicted_problem_type": str(predicted_problem_type)
         })
     except Exception as e:
         logging.exception(f"예측 API 오류 발생 /predict: {e}")
-        send_slack_notification(sensor_id_for_alert, location_for_alert, f"예측 처리 중 시스템 오류 발생: {str(e)}", datetime.now().strftime('%Y-%m-%d %H:%M:%S'), level="ERROR")
         return jsonify({"status": "error", "message": "예측 처리 중 오류 발생"}), 500
     finally:
         if conn:
             conn.close()
 
-
-# 서버 실행 (테스트 서버용 - Gunicorn/Nginx 사용 시 주석 처리)
+# 서버 실행 (로컬 테스트용)
 # if __name__ == "__main__":
 #     app.run(host="0.0.0.0", port=5000, debug=True)
