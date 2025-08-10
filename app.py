@@ -269,8 +269,9 @@ def predict():
     try:
         conn = get_db_connection()
         with conn.cursor() as cursor:
+            # SQL 쿼리를 수정하여 speed_drop_rate와 ping_timeout을 추가로 가져오도록 변경
             cursor.execute("""
-                SELECT sr.rssi, sr.ping, sr.speed, s.location, s.ap_mac_address, sr.timestamp, s.sensor_id
+                SELECT sr.rssi, sr.ping, sr.speed, sr.speed_drop_rate, sr.ping_timeout, s.location, s.ap_mac_address, sr.timestamp, s.sensor_id
                 FROM f_sensor_readings sr
                 JOIN f_sensors s ON sr.sensor_id = s.sensor_id
                 WHERE sr.reading_id = %s
@@ -290,6 +291,9 @@ def predict():
                 reading_data['rssi'],
                 reading_data['ping'],
                 reading_data['speed'],
+                # 수정된 SQL 쿼리에서 가져온 speed_drop_rate와 ping_timeout 인자 추가
+                speed_drop_rate=reading_data['speed_drop_rate'],
+                ping_timeout=reading_data['ping_timeout'],
                 location=reading_data['location'],
                 ap_mac_address=reading_data['ap_mac_address'],
                 timestamp=reading_data['timestamp']
@@ -323,6 +327,7 @@ def predict():
     finally:
         if conn:
             conn.close()
+
 
 # 서버 실행 (테스트 서버용 - Gunicorn/Nginx 사용 시 주석 처리)
 # if __name__ == "__main__":
