@@ -171,6 +171,8 @@ def upload_and_predict():
                     f"problem_type: '{predicted_problem_type}' (타입: {type(predicted_problem_type)})"
                 )
 
+
+
                 cursor.execute(insert_diagnosis_sql, (reading_id, predicted_problem_type))
                 conn.commit()
                 logging.info(f"ID {reading_id}: 예측 결과 저장 성공.")
@@ -273,5 +275,5 @@ def predict():
             conn.close()
 
 # 서버 실행 (로컬 테스트용)
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=5000, debug=True)
+#if __name__ == "__main__":
+#    app.run(host="0.0.0.0", port=5000, debug=True)
