@@ -1,11 +1,9 @@
 # Wivue 위뷰
-
-## 💡 프로젝트 개요
 <br>
 본 프로젝트는 교내 와이파이 품질 문제의 근본적인 해결을 목표로 하는 **AI 기반 와이파이 장애 진단 및 대응 지원 시스템**입니다. 
 
 
-## ⚙️ 주요 기능
+## 💡 주요 기능
 <br>
 
 ### AI 기반 장애 진단
@@ -26,7 +24,7 @@
 - Server: Flask, Amazon EC2, Nginx, Gunicorn 
 - Notification System: Slack Webhook 
 
-### 프로젝트 설계도
+### ⚙️ 프로젝트 설계도
 
 
 ### 🧑‍💻 팀원 소개
