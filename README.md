@@ -14,21 +14,26 @@
 
 #### 데이터 수집 및 관리
 - 라즈베리파이 센서가 네트워크 데이터를 측정하고, 이 데이터는 MySQL 데이터베이스에 저장됩니다.
+<br>
 
+### 🧑‍💻 팀원 구성
+<br>
 
 ### 🛠️ 개발 환경
-<br>
 - Hardware: Raspberry Pi 5 
 - Machine Learning: NumPy, Pandas, Scikit-learn 
 - Database: MySQL 
 - Server: Flask, Amazon EC2, Nginx, Gunicorn 
 - Notification System: Slack Webhook 
+<br>
 
 ### ⚙️ 프로젝트 설계도
 
 
-### 🧑‍💻 팀원 소개
 <br>
+
+### 🧑‍💻 역할 분담
+
 김영모: 컴퓨터공학전공, 머신러닝
 
 박재현: 전자전기공학부, 하드웨어
@@ -38,3 +43,7 @@
 주희윤: 컴퓨터공학전공, PM, 백엔드
 
 차영준: 컴퓨터공학전공, DB, 서버
+<br>
+
+### 시연영상
+
