@@ -58,5 +58,5 @@
 - **차영준**: 컴퓨터공학전공, DB, 서버
 <br>
 
-## 시연영상
+## 🎬 시연영상
 [![팜 시스템_방학 프로젝트_운영진팀_최종구현](https://img.youtube.com/vi/8BXFbRDyLbA/hqdefault.jpg)](https://www.youtube.com/watch?v=8BXFbRDyLbA&feature=youtu.be)
