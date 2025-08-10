@@ -33,11 +33,13 @@ def send_slack_notification(sensor_id, location, problem_reason, occurred_at, le
     else:
         color = "#cccccc"
 
-    message_text = f"🚨 [WiFi 진단 시스템 알림 - {level}] 🚨\n" \
-                   f"• 센서 ID: `{sensor_id}`\n" \
-                   f"• 센서 위치: `{location}`\n" \
-                   f"• 장애 원인: `{problem_reason}`\n" \
-                   f"• 발생 시각: `{occurred_at}`"
+    message_text = (
+        f"🚨 [WiFi 진단 시스템 알림 - {level}] 🚨\n"
+        f"• 센서 ID: `{sensor_id}`\n"
+        f"• 센서 위치: `{location}`\n"
+        f"• 장애 원인: `{problem_reason}`\n"
+        f"• 발생 시각: `{occurred_at}`"
+    )
 
     slack_payload = {
         "text": message_text,
@@ -106,29 +108,44 @@ def upload_and_predict():
                     logging.warning(f"데이터 형식/필드 오류: {e} / 수신 데이터: {data}")
                     continue
 
-                cursor.execute("SELECT sensor_id, location FROM f_sensors WHERE ap_mac_address = %s", (sensor_mac,))
+                cursor.execute(
+                    "SELECT sensor_id, location FROM f_sensors WHERE ap_mac_address = %s",
+                    (sensor_mac,)
+                )
                 sensor = cursor.fetchone()
                 if not sensor:
                     logging.warning(f"미등록 MAC 주소: {sensor_mac}")
                     continue
-                
+
                 sensor_id = sensor["sensor_id"]
                 location = sensor["location"]
-                
+
                 # 2. 속도 감소율 계산
                 speed_drop_rate = 0.0
                 try:
-                    cursor.execute("SELECT speed FROM f_sensor_readings WHERE sensor_id = %s AND timestamp < %s ORDER BY timestamp DESC LIMIT 1", (sensor_id, timestamp_str))
+                    cursor.execute(
+                        "SELECT speed FROM f_sensor_readings "
+                        "WHERE sensor_id = %s AND timestamp < %s "
+                        "ORDER BY timestamp DESC LIMIT 1",
+                        (sensor_id, timestamp_str)
+                    )
                     prev_speed_data = cursor.fetchone()
                     if prev_speed_data and prev_speed_data['speed'] > 0:
                         speed_drop_rate = (prev_speed_data['speed'] - speed) / prev_speed_data['speed']
                 except Exception as e:
                     logging.error(f"속도 감소율 계산 중 오류: {e}")
-                    speed_drop_rate = 0.0 # 오류 시 0으로 처리
+                    speed_drop_rate = 0.0  # 오류 시 0으로 처리
 
                 # 3. 측정값 DB 저장
-                insert_sql = "INSERT INTO f_sensor_readings (sensor_id, timestamp, rssi, ping, speed, ping_timeout, speed_drop_rate) VALUES (%s, %s, %s, %s, %s, %s, %s)"
-                cursor.execute(insert_sql, (sensor_id, timestamp_str, rssi, ping, speed, ping_timeout, speed_drop_rate))
+                insert_sql = (
+                    "INSERT INTO f_sensor_readings "
+                    "(sensor_id, timestamp, rssi, ping, speed, ping_timeout, speed_drop_rate) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s)"
+                )
+                cursor.execute(
+                    insert_sql,
+                    (sensor_id, timestamp_str, rssi, ping, speed, ping_timeout, speed_drop_rate)
+                )
                 reading_id = cursor.lastrowid
                 conn.commit()
                 logging.info(f"ID {reading_id}: 데이터 저장 성공.")
@@ -144,13 +161,32 @@ def upload_and_predict():
                 logging.info(f"ID {reading_id}: 예측 완료. 결과: {predicted_problem_type}")
 
                 # 5. 예측 결과를 DB에 저장
-                insert_diagnosis_sql = "INSERT INTO f_diagnosis_results (reading_id, problem_type) VALUES (%s, %s)"
+                insert_diagnosis_sql = (
+                    "INSERT INTO f_diagnosis_results (reading_id, problem_type) "
+                    "VALUES (%s, %s)"
+                )
+
+                logging.info(
+                    f"DB 저장 직전 값 확인 -> reading_id: {reading_id}, "
+                    f"problem_type: '{predicted_problem_type}' (타입: {type(predicted_problem_type)})"
+                )
+
                 cursor.execute(insert_diagnosis_sql, (reading_id, predicted_problem_type))
                 conn.commit()
                 logging.info(f"ID {reading_id}: 예측 결과 저장 성공.")
 
-                # 6. Slack 알림 전송
-                send_slack_notification(sensor_id, location, f"예측 결과: {predicted_problem_type}", timestamp_str, level="INFO")
+                # 6. Slack 알림 전송 (정상은 전송 생략)
+                pt = str(predicted_problem_type)  # numpy.str_ 등 대비
+                if pt != "정상":
+                    # 필요시 레벨 조정: 트래픽증가는 WARNING, 그 외 ERROR 예시
+                    level = "WARNING" if pt in ("트래픽증가",) else "ERROR"
+                    send_slack_notification(
+                        sensor_id, location, f"예측 결과: {pt}", timestamp_str, level=level
+                    )
+                    logging.info(f"ID {reading_id}: Slack 알림 전송 ({level})")
+                else:
+                    logging.info(f"ID {reading_id}: 예측 결과 정상 → Slack 알림 생략")
+
                 processed_count += 1
 
             return jsonify({"status": "success", "message": f"총 {processed_count}개의 데이터 처리 및 예측 완료."})
@@ -158,9 +194,9 @@ def upload_and_predict():
     except Exception as e:
         logging.exception(f"/upload API 처리 중 예상치 못한 오류 발생: {e}")
         if conn:
-            conn.rollback() # 오류 발생 시 DB 변경사항 되돌리기
+            conn.rollback()  # 오류 발생 시 DB 변경사항 되돌리기
         return jsonify({"status": "error", "message": "서버 내부 오류 발생"}), 500
-    
+
     finally:
         if conn:
             conn.close()
@@ -173,7 +209,8 @@ def get_recent_readings():
         conn = get_db_connection()
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT sr.reading_id, s.location, s.ap_mac_address, sr.timestamp, sr.rssi, sr.ping, sr.speed, sr.ping_timeout, sr.speed_drop_rate
+                SELECT sr.reading_id, s.location, s.ap_mac_address, sr.timestamp,
+                       sr.rssi, sr.ping, sr.speed, sr.ping_timeout, sr.speed_drop_rate
                 FROM f_sensor_readings sr
                 JOIN f_sensors s ON sr.sensor_id = s.sensor_id
                 ORDER BY sr.timestamp DESC
@@ -197,11 +234,17 @@ def predict():
         reading_id = int(data["reading_id"])
         conn = get_db_connection()
         with conn.cursor() as cursor:
-            cursor.execute("SELECT sr.*, s.location, s.ap_mac_address FROM f_sensor_readings sr JOIN f_sensors s ON sr.sensor_id = s.sensor_id WHERE sr.reading_id = %s", (reading_id,))
+            cursor.execute(
+                "SELECT sr.*, s.location, s.ap_mac_address "
+                "FROM f_sensor_readings sr "
+                "JOIN f_sensors s ON sr.sensor_id = s.sensor_id "
+                "WHERE sr.reading_id = %s",
+                (reading_id,)
+            )
             reading_data = cursor.fetchone()
             if not reading_data:
                 return jsonify({"status": "error", "message": "해당 reading_id를 찾을 수 없습니다."}), 404
-            
+
             predicted_problem_type = predict_wifi_quality(
                 rssi=reading_data['rssi'],
                 speed=reading_data['speed'],
@@ -209,12 +252,19 @@ def predict():
                 timeout=reading_data['ping_timeout'],
                 speed_drop_rate=reading_data['speed_drop_rate'] or 0.0
             )
-            
-            # 예측 결과가 이미 있으면 업데이트, 없으면 새로 삽입
-            cursor.execute("INSERT INTO f_diagnosis_results (reading_id, problem_type) VALUES (%s, %s) ON DUPLICATE KEY UPDATE problem_type = VALUES(problem_type)", (reading_id, predicted_problem_type))
+
+            cursor.execute(
+                "INSERT INTO f_diagnosis_results (reading_id, problem_type) VALUES (%s, %s) "
+                "ON DUPLICATE KEY UPDATE problem_type = VALUES(problem_type)",
+                (reading_id, predicted_problem_type)
+            )
             conn.commit()
-            
-        return jsonify({"status": "success", "reading_id": reading_id, "predicted_problem_type": predicted_problem_type})
+
+        return jsonify({
+            "status": "success",
+            "reading_id": int(reading_id),
+            "predicted_problem_type": str(predicted_problem_type)
+        })
     except Exception as e:
         logging.exception(f"예측 API 오류 발생 /predict: {e}")
         return jsonify({"status": "error", "message": "예측 처리 중 오류 발생"}), 500
