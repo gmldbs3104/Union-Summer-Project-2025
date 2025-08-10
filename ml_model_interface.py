@@ -10,7 +10,12 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class MLModelInterface:
     def __init__(self):
         # 🔽 경로 설정 (상대경로 → 절대경로로 수정 가능)
-        model_dir = "models"
+        # 1. 현재 이 스크립트 파일(ml_model_interface.py)의 절대 경로를 찾습니다.
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+
+        # 2. 찾은 절대 경로와 'models' 폴더 이름을 합쳐 모델 폴더의 최종 경로를 만듭니다.
+        model_dir = os.path.join(base_dir, 'models')
+        
         model_path = os.path.join(model_dir, 'random_forest_model.joblib')
         feature_cols_path = os.path.join(model_dir, 'feature_columns.joblib')
 

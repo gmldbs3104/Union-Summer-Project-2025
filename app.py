@@ -149,6 +149,8 @@ def upload_and_predict():
                 # 🔽🔽 이 로그를 추가해서 변수 값을 직접 확인! 🔽🔽
                 logging.info(f"DB 저장 직전 값 확인 -> reading_id: {reading_id}, problem_type: '{predicted_problem_type}' (타입: {type(predicted_problem_type)})")
 
+
+
                 cursor.execute(insert_diagnosis_sql, (reading_id, predicted_problem_type))
                 conn.commit()
                 logging.info(f"ID {reading_id}: 예측 결과 저장 성공.")
