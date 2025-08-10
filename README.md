@@ -1,7 +1,7 @@
 # Wivue 위뷰
 본 프로젝트는 교내 와이파이 품질 문제의 근본적인 해결을 목표로 하는 **AI 기반 와이파이 장애 진단 및 대응 지원 시스템**입니다. 
 
-[발표 자료 링크](https://www.figma.com/proto/tArarlOxbjTUDeoSflWEu9/Union-%EB%B0%A9%ED%95%99-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8?node-id=661-783&t=93ZImVVQMSQedC45-1&scaling=min-zoom&content-scaling=fixed&page-id=602%3A6&starting-point-node-id=661%3A783) |
+[발표 자료 링크](https://www.figma.com/proto/tArarlOxbjTUDeoSflWEu9/Union-%EB%B0%A9%ED%95%99-%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8?node-id=661-783&t=93ZImVVQMSQedC45-1&scaling=min-zoom&content-scaling=fixed&page-id=602%3A6&starting-point-node-id=661%3A783) 
 <br>
   
 ## 💡 주요 기능
